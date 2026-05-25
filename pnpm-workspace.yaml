@@ -1,3 +1,17 @@
 packages:
   - 'packages/*'
   - 'examples/*'
+
+# pnpm 11 gates dependency build scripts. better-sqlite3 compiles a native
+# binding; esbuild fetches its platform binary (used by tsx and vitest). Both
+# are required, so allow them to run their install/postinstall scripts.
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
+
+# Force the @typescript-eslint subpackages that float a `^` range onto a release
+# old enough to pass CI's minimumReleaseAge supply-chain policy. pnpm 11 reads
+# overrides from here, not from package.json.
+overrides:
+  '@typescript-eslint/types': 8.59.4
+  '@typescript-eslint/tsconfig-utils': 8.59.4
