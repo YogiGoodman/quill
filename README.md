@@ -114,5 +114,4 @@ Issues are welcome — bug reports, design questions, and edge cases on the
 determinism model especially. Pull requests are deferred until v0.2; the
 architecture is still settling and the schema is deliberately frozen for Week 1.
 
-For the project's goals and rationale, see
-[the problem-and-goals document](.cursor/docs/01-problem-and-goals.md).
+For the design in depth, see [docs/architecture.md](docs/architecture.md).

@@ -6,7 +6,8 @@ dist/
 *.db
 *.db-wal
 *.db-shm
-docs/
+# Private planning docs — local only, not published
+docs/implementation-plan.md
 .cursorrules
 .cursor/
 .claude/
