@@ -11,31 +11,37 @@ import type { DETERMINISM_MODES } from './walSchema.js';
 
 export type DeterminismMode = (typeof DETERMINISM_MODES)[number];
 
-interface BaseTool<TArgs, TResult> {
+interface ToolBase {
   /** Stable, human-readable tool name, e.g. `charge_card`. */
   name: string;
-  execute(args: TArgs): Promise<TResult> | TResult;
 }
 
 /** Pure / read-only. Cached and replayed from the WAL. */
-export interface RecordedTool<TArgs, TResult> extends BaseTool<TArgs, TResult> {
+export interface RecordedTool<TArgs, TResult> extends ToolBase {
   determinism: 'recorded';
+  execute(args: TArgs): Promise<TResult> | TResult;
   /** Hash of the inputs; compared on replay to detect non-determinism. */
   inputHash(args: TArgs): string;
 }
 
-/** Mutates the world. Never re-executed; reconciled by idempotency key. */
-export interface SideEffectTool<TArgs, TResult>
-  extends BaseTool<TArgs, TResult> {
+/**
+ * Mutates the world. Never re-executed; reconciled by idempotency key.
+ *
+ * `execute` receives the idempotency key the runtime derived and persisted, so
+ * the outbound call carries the same key that `reconcile` will later query —
+ * the remote system itself deduplicates on it.
+ */
+export interface SideEffectTool<TArgs, TResult> extends ToolBase {
   determinism: 'side_effect';
+  execute(args: TArgs, idempotencyKey: string): Promise<TResult> | TResult;
   idempotencyKey(stepId: string, args: TArgs): string;
   reconcile(key: string): Promise<TResult | null> | TResult | null;
 }
 
 /** Human-in-the-loop. Pauses replay; tombstoned past a fork point. */
-export interface InteractiveTool<TArgs, TResult>
-  extends BaseTool<TArgs, TResult> {
+export interface InteractiveTool<TArgs, TResult> extends ToolBase {
   determinism: 'interactive';
+  execute(args: TArgs): Promise<TResult> | TResult;
   /** Describes the consent being requested from the operator. */
   prompt(args: TArgs): string;
 }
@@ -54,6 +60,9 @@ export function defineTool<TArgs, TResult>(
 ): ToolDefinition<TArgs, TResult> {
   if (!tool.name) {
     throw new Error('tool requires a non-empty name');
+  }
+  if (typeof tool.execute !== 'function') {
+    throw new Error(`tool "${tool.name}" requires an execute function`);
   }
   switch (tool.determinism) {
     case 'recorded':

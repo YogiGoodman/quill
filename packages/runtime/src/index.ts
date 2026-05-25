@@ -6,4 +6,5 @@ export * from './tools.js';
 export * from './mockRemote.js';
 export * from './walWriter.js';
 export * from './walReader.js';
+export * from './reconcile.js';
 export * from './orchestrator.js';

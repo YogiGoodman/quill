@@ -24,6 +24,8 @@ export const RUN_STATUSES = [
   'indeterminate',
 ] as const;
 
+export type RunStatus = (typeof RUN_STATUSES)[number];
+
 /**
  * The exhaustive WAL event types. `INDETERMINATE` is intentionally absent: it is
  * a derived condition (a `STEP_STARTED` with no terminal event), not a stored

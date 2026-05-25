@@ -5,6 +5,7 @@
  *
  * Callers pass `now` (from `ctx.now()`); this module never reads the wall clock.
  */
+import { eq } from 'drizzle-orm';
 import { immediateTransaction, type QuillDatabase } from './db.js';
 import {
   branches,
@@ -12,6 +13,7 @@ import {
   runs,
   type Branch,
   type Run,
+  type RunStatus,
   type WalEvent,
 } from './walSchema.js';
 import type { DeterminismMode } from './tools.js';
@@ -112,6 +114,61 @@ export function writeStepStarted(
       throw new Error('writeStepStarted: insert returned no row');
     }
     return row;
+  });
+}
+
+export interface StepFailedInput {
+  branchId: string;
+  stepId: string;
+  semanticName: string;
+  determinism?: DeterminismMode;
+  loopIndex?: number;
+  /** Serialised error/diagnostic payload, stored in `payloadJson`. */
+  errorJson?: string;
+  now: number;
+}
+
+/** Write the terminal failure record. Subject to the same duplicate guard. */
+export function writeStepFailed(
+  db: QuillDatabase,
+  input: StepFailedInput,
+): WalEvent {
+  return immediateTransaction(db, (tx) => {
+    const [row] = tx
+      .insert(events)
+      .values({
+        branchId: input.branchId,
+        stepId: input.stepId,
+        type: 'STEP_FAILED',
+        determinism: input.determinism ?? null,
+        semanticName: input.semanticName,
+        loopIndex: input.loopIndex ?? 0,
+        payloadJson: input.errorJson ?? null,
+        idempotencyKey: null,
+        costJson: null,
+        createdAt: input.now,
+      })
+      .returning()
+      .all();
+    if (!row) {
+      throw new Error('writeStepFailed: insert returned no row');
+    }
+    return row;
+  });
+}
+
+/** Update a run's lifecycle status. */
+export function setRunStatus(
+  db: QuillDatabase,
+  runId: string,
+  status: RunStatus,
+  now: number,
+): void {
+  immediateTransaction(db, (tx) => {
+    tx.update(runs)
+      .set({ status, updatedAt: now })
+      .where(eq(runs.id, runId))
+      .run();
   });
 }
 

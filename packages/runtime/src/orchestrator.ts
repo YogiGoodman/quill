@@ -11,9 +11,10 @@
  * deterministic clock, production passes `Date.now`.
  */
 import type { QuillDatabase } from './db.js';
+import { reconcileIndeterminateStep } from './reconcile.js';
 import { deriveStepId } from './stepId.js';
 import type { ToolDefinition } from './tools.js';
-import { findRun, findTerminal } from './walReader.js';
+import { findRun, findStarted, findTerminal } from './walReader.js';
 import {
   createBranch,
   createRun,
@@ -75,6 +76,22 @@ export async function runWorkflow(
         return JSON.parse(terminal.payloadJson ?? 'null');
       }
 
+      // An orphaned STEP_STARTED means the process crashed mid-step last time:
+      // the step is INDETERMINATE. Recover via reconcile rather than blindly
+      // re-running (which could double-fire a side effect).
+      const orphan = findStarted(db, branchId, stepId);
+      if (orphan) {
+        return reconcileIndeterminateStep({
+          db,
+          runId: options.runId,
+          branchId,
+          started: orphan,
+          tool,
+          args,
+          now: clock,
+        });
+      }
+
       const idempotencyKey =
         tool.determinism === 'side_effect'
           ? tool.idempotencyKey(stepId, args)
@@ -89,7 +106,12 @@ export async function runWorkflow(
         now: clock(),
       });
 
-      const result = await tool.execute(args);
+      // side_effect tools receive the persisted idempotency key so their
+      // outbound call and a later reconcile() agree on it.
+      const result =
+        tool.determinism === 'side_effect'
+          ? await tool.execute(args, tool.idempotencyKey(stepId, args))
+          : await tool.execute(args);
 
       writeStepCompleted(db, {
         branchId,
