@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# SQLite WAL database and sidecars
+*.db
+*.db-wal
+*.db-shm
+docs/
+.cursorrules
+.cursor/
+.claude/
+AGENTS.md

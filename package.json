@@ -1,0 +1,25 @@
+{
+  "name": "quill",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Durable execution runtime for LLM agents.",
+  "license": "ISC",
+  "packageManager": "pnpm@11.3.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @quill/runtime dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "test:invariants": "pnpm --filter @quill/runtime test:invariants",
+    "db:migrate": "pnpm --filter @quill/runtime db:migrate",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "eslint": "^10.4.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.60.0"
+  }
+}

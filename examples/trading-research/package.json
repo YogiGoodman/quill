@@ -1,0 +1,14 @@
+{
+  "name": "@quill/example-trading-research",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Showcase workflow. Fleshed out in Week 8.",
+  "license": "ISC",
+  "type": "module",
+  "scripts": {
+    "trading-research": "echo \"example: implemented in Week 8\" && exit 0"
+  },
+  "dependencies": {
+    "@quill/runtime": "workspace:*"
+  }
+}
