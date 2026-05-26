@@ -7,6 +7,7 @@ export * from './mockRemote.js';
 export * from './walWriter.js';
 export * from './walReader.js';
 export * from './reconcile.js';
+export * from './nondeterminism.js';
 export * from './fakeAnthropic.js';
 export * from './contextReducer.js';
 export * from './orchestrator.js';

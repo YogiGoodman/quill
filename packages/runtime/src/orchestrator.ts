@@ -18,9 +18,29 @@ import {
   type AnthropicResponse,
   type Message,
 } from './fakeAnthropic.js';
+import {
+  assertDeterministicInput,
+  fingerprint,
+} from './nondeterminism.js';
 import { reconcileIndeterminateStep } from './reconcile.js';
 import { deriveStepId } from './stepId.js';
 import type { ToolDefinition } from './tools.js';
+
+/** Canonical input fingerprint for a tool step, by determinism mode. */
+function toolFingerprint<TArgs, TResult>(
+  tool: ToolDefinition<TArgs, TResult>,
+  stepId: string,
+  args: TArgs,
+): string {
+  switch (tool.determinism) {
+    case 'recorded':
+      return fingerprint(tool.inputHash(args));
+    case 'side_effect':
+      return fingerprint(tool.idempotencyKey(stepId, args));
+    case 'interactive':
+      return fingerprint(JSON.stringify(args));
+  }
+}
 import {
   findRun,
   findStarted,
@@ -96,13 +116,20 @@ export async function runWorkflow(
       // Flat sequential model for 5.2: no parent step, single loop index.
       // Loop indexing for ReAct lands in step 10.
       const stepId = deriveStepId(options.workflowId, '', 0, semanticName);
+      const inputFingerprint = toolFingerprint(tool, stepId, args);
 
       const terminal = findTerminal(db, branchId, stepId);
       if (terminal) {
         if (terminal.type === 'STEP_FAILED') {
           throw new Error(`step "${semanticName}" previously failed`);
         }
-        // Replay the recorded result without executing.
+        // Replay the recorded result — but only if the inputs still match.
+        assertDeterministicInput(
+          semanticName,
+          stepId,
+          findStarted(db, branchId, stepId),
+          inputFingerprint,
+        );
         return JSON.parse(terminal.payloadJson ?? 'null');
       }
 
@@ -133,6 +160,7 @@ export async function runWorkflow(
         semanticName,
         determinism: tool.determinism,
         idempotencyKey,
+        payloadJson: JSON.stringify({ inputFingerprint }),
         now: clock(),
       });
 
@@ -157,12 +185,20 @@ export async function runWorkflow(
 
     async llm(semanticName, request) {
       const stepId = deriveStepId(options.workflowId, '', 0, semanticName);
+      const inputFingerprint = fingerprint(JSON.stringify(request));
 
       const terminal = findTerminal(db, branchId, stepId);
       if (terminal) {
         if (terminal.type === 'STEP_FAILED') {
           throw new Error(`llm step "${semanticName}" previously failed`);
         }
+        // Detect a changed prompt/request before returning the cached response.
+        assertDeterministicInput(
+          semanticName,
+          stepId,
+          findStarted(db, branchId, stepId),
+          inputFingerprint,
+        );
         return JSON.parse(terminal.payloadJson ?? 'null');
       }
 
@@ -175,6 +211,7 @@ export async function runWorkflow(
           stepId,
           semanticName,
           determinism: 'recorded',
+          payloadJson: JSON.stringify({ inputFingerprint }),
           now: clock(),
         });
       }
