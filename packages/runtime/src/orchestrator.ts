@@ -10,16 +10,23 @@
  * `clock` is injected so steps never read the wall clock directly; tests pass a
  * deterministic clock, production passes `Date.now`.
  */
+import { reduceMessages } from './contextReducer.js';
 import type { QuillDatabase } from './db.js';
 import {
   fakeAnthropic,
   type AnthropicRequest,
   type AnthropicResponse,
+  type Message,
 } from './fakeAnthropic.js';
 import { reconcileIndeterminateStep } from './reconcile.js';
 import { deriveStepId } from './stepId.js';
 import type { ToolDefinition } from './tools.js';
-import { findRun, findStarted, findTerminal } from './walReader.js';
+import {
+  findRun,
+  findStarted,
+  findTerminal,
+  readBranchEvents,
+} from './walReader.js';
 import {
   createBranch,
   createRun,
@@ -189,4 +196,20 @@ export async function runWorkflow(
   };
 
   await workflow(ctx);
+}
+
+/**
+ * Replay a completed run. Re-runs the workflow against the existing WAL — every
+ * step is already `STEP_COMPLETED`, so nothing executes — and returns the
+ * conversation reconstructed by the context reducer. Deterministic: identical
+ * bytes to the original run.
+ */
+export async function replayRun(
+  db: QuillDatabase,
+  workflow: Workflow,
+  options: RunWorkflowOptions,
+): Promise<Message[]> {
+  await runWorkflow(db, workflow, options);
+  const branchId = options.branchId ?? `${options.runId}:root`;
+  return reduceMessages(readBranchEvents(db, branchId));
 }

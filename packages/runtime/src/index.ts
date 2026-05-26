@@ -8,4 +8,5 @@ export * from './walWriter.js';
 export * from './walReader.js';
 export * from './reconcile.js';
 export * from './fakeAnthropic.js';
+export * from './contextReducer.js';
 export * from './orchestrator.js';
