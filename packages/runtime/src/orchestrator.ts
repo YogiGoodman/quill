@@ -11,6 +11,11 @@
  * deterministic clock, production passes `Date.now`.
  */
 import type { QuillDatabase } from './db.js';
+import {
+  fakeAnthropic,
+  type AnthropicRequest,
+  type AnthropicResponse,
+} from './fakeAnthropic.js';
 import { reconcileIndeterminateStep } from './reconcile.js';
 import { deriveStepId } from './stepId.js';
 import type { ToolDefinition } from './tools.js';
@@ -22,6 +27,11 @@ import {
   writeStepStarted,
 } from './walWriter.js';
 
+/** The LLM call function. Defaults to the deterministic fake provider. */
+export type LlmFn = (
+  request: AnthropicRequest,
+) => Promise<AnthropicResponse> | AnthropicResponse;
+
 export interface WorkflowContext {
   /** Invoke a tool as a durable step. Replays from the WAL if already done. */
   tool<TArgs, TResult>(
@@ -29,6 +39,16 @@ export interface WorkflowContext {
     tool: ToolDefinition<TArgs, TResult>,
     args: TArgs,
   ): Promise<TResult>;
+
+  /**
+   * Make an LLM call as a durable, recorded step. The response is cached to the
+   * WAL and replayed on resume; the call is not repeated. ReAct loops are
+   * flattened by issuing each `ctx.llm` / `ctx.tool` as its own step.
+   */
+  llm(
+    semanticName: string,
+    request: AnthropicRequest,
+  ): Promise<AnthropicResponse>;
 }
 
 export type Workflow = (ctx: WorkflowContext) => Promise<void>;
@@ -41,6 +61,8 @@ export interface RunWorkflowOptions {
   input?: unknown;
   /** Monotonic millisecond clock. Defaults to `Date.now`. */
   clock?: () => number;
+  /** LLM call function. Defaults to the deterministic fake provider. */
+  llm?: LlmFn;
 }
 
 export async function runWorkflow(
@@ -49,6 +71,7 @@ export async function runWorkflow(
   options: RunWorkflowOptions,
 ): Promise<void> {
   const clock = options.clock ?? ((): number => Date.now());
+  const llmFn = options.llm ?? fakeAnthropic;
   const branchId = options.branchId ?? `${options.runId}:root`;
 
   if (!findRun(db, options.runId)) {
@@ -123,6 +146,45 @@ export async function runWorkflow(
       });
 
       return result;
+    },
+
+    async llm(semanticName, request) {
+      const stepId = deriveStepId(options.workflowId, '', 0, semanticName);
+
+      const terminal = findTerminal(db, branchId, stepId);
+      if (terminal) {
+        if (terminal.type === 'STEP_FAILED') {
+          throw new Error(`llm step "${semanticName}" previously failed`);
+        }
+        return JSON.parse(terminal.payloadJson ?? 'null');
+      }
+
+      // LLM steps are recorded (deterministic). A new step writes STEP_STARTED;
+      // an orphan from a crash skips the (unique) STARTED write and simply
+      // re-executes — safe because the call is deterministic.
+      if (!findStarted(db, branchId, stepId)) {
+        writeStepStarted(db, {
+          branchId,
+          stepId,
+          semanticName,
+          determinism: 'recorded',
+          now: clock(),
+        });
+      }
+
+      const response = await llmFn(request);
+
+      writeStepCompleted(db, {
+        branchId,
+        stepId,
+        semanticName,
+        determinism: 'recorded',
+        payloadJson: JSON.stringify(response),
+        costJson: JSON.stringify(response.usage),
+        now: clock(),
+      });
+
+      return response;
     },
   };
 

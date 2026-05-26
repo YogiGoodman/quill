@@ -59,3 +59,12 @@ export function runChargeWorkflow(
 ): CrashOutcome {
   return spawnFixture('chargeChild.ts', [dbPath, remotePath, execCountPath], env);
 }
+
+export function runReactWorkflow(
+  dbPath: string,
+  toolCountPath: string,
+  llmCountPath: string,
+  env: Record<string, string> = {},
+): CrashOutcome {
+  return spawnFixture('reactChild.ts', [dbPath, toolCountPath, llmCountPath], env);
+}
